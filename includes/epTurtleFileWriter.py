@@ -89,6 +89,8 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 				self.__addPO( "wo:propertyType", "wo:propertyTypeTime" )
 			elif data['datatype'] == 'globe-coordinate':
 				self.__addPO( "wo:propertyType", "wo:propertyTypeGlobeCoordinates")
+			elif data['datatype'] == 'url':
+				self.__addPO( "wo:propertyType", "wo:propertyURL")
 			else:
 				logging.log( '*** Warning: Unknown property type "' + data['datatype'] + '".'  )
 
@@ -134,15 +136,16 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			if not self.dataFilter.includeSite(sitekey):
 				continue
 			if sitekey[-10:] == 'wikivoyage':
-				urlPrefix = 'http://' + sitekey[:-10].replace('_','-') + '.wikivoyage.org/wiki/'
+				URLPrefix = 'http://' + sitekey[:-10].replace('_','-') + '.wikivoyage.org/wiki/'
 			elif sitekey[-4:] == 'wiki':
-				urlPrefix = 'http://' + sitekey[:-4].replace('_','-') + '.wikipedia.org/wiki/'
+				URLPrefix = 'http://' + sitekey[:-4].replace('_','-') + '.wikipedia.org/wiki/'
 			else:
 				logging.log("*** Warning: the following sitekey was not understood: " + sitekey)
 				continue
-
-			articletitle = data['links'][sitekey].replace(' ','_').encode('utf-8')
-			self.__startTriples( "<" + urlPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
+	                
+			articledata = data['links'][sitekey]
+	                articletitle = articledata['name'].replace(' ','_').encode('utf-8')
+			self.__startTriples( "<" + URLPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
 			self.__addPO( "so:about", "w:" + title )
 			if sitekey in siteLanguageCodes:
 				self.__addPO( "so:inLanguage", "\"" + siteLanguageCodes[sitekey] + "\"")
@@ -235,15 +238,18 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 		if propertyTitle in knownPropertyTypes:
 			return knownPropertyTypes[propertyTitle]
 
-		lowTitle = 'p' + propertyTitle[1:]
+		upTitle = 'P' + propertyTitle[1:]
 		logging.logMore('Fetching current datatype of property ' + propertyTitle + ' from wikidata.org ... ' )
 		self.propertyLookupCount += 1
-		for line in urllib.urlopen('http://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + lowTitle + '&props=datatype&format=json'):
+		
+	        for line in urllib.urlopen('http://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + upTitle + '&props=datatype&format=json'):
 			data = eval(line)
-			if 'entities' in data and lowTitle in data['entities'] and 'datatype' in data['entities'][lowTitle]:
-				logging.log('found type ' + data['entities'][lowTitle]['datatype'])
-				knownPropertyTypes[propertyTitle] = data['entities'][lowTitle]['datatype'] # share with all instances of this class
-				return data['entities'][lowTitle]['datatype']
+			if 'entities' in data and upTitle in data['entities'] and 'datatype' in data['entities'][upTitle]:
+	                        type = data['entities'][upTitle]['datatype']
+				logging.log('found type ' + data['entities'][upTitle]['datatype'])
+	                        print(type)
+				knownPropertyTypes[propertyTitle] = type # share with all instances of this class
+				return type
 
 		logging.log('error')
 		logging.log('*** Could not find the datatype for property ' + propertyTitle + ' online. Export might be erroneous.')
@@ -294,6 +300,8 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			return '"' + literal + '"'
 		else:
 			return '"' + literal + '"@' + langCodes[lang]
+	def __encodeURLLiteral(self, string):
+	        return(self.__encodeStringLiteral(string) + '^^x:simpleURL')
 
 	# Encode float literals for use in Turtle.
 	def __encodeFloatLiteral(self,number):
@@ -469,9 +477,11 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 					key = 'VC' + self.__getHashForLocalName(snak[3])
 					self.valuesGC[key] = snak[3]
 					self.__addPO( prop, "w:" + key )
+	                        elif datatype == 'url' :
+					self.__addPO( prop, self.__encodeURLLiteral(snak[3]) )
 				else :
-					logging.log('*** Warning: Unsupported value snak:\n' + str(snak) + '\nExport might be incomplete.\n')
-					includeSnak = False
+	                            logging.log('*** Warning: Unsupported value snak (datatype: {}) {}:\n'.format(datatype,str(snak)) + '\nExport might be incomplete.\n')
+				    includeSnak = False
 			else:
 				includeSnak = False
 		elif snak[0] == 'somevalue' :
@@ -559,6 +569,7 @@ owlPropertyRanges = {
 	'time': 'o:Thing',
 	'globe-coordinate': 'o:Thing',
 	'commonsMedia': 'o:Thing',
+	'url': 'x:AnyURI',
 	None : 'o:Thing' # fallback (happens if missing property type cannot be fetched online)
 }
 
@@ -1202,6 +1213,7 @@ siteLanguageCodes = {
 	'vepwiki' : 'vep',
 	'vewiki' : 've',
 	'viwiki' : 'vi',
+	'viwikivoyage' : 'vi',
 	'vlswiki' : 'vls',
 	'vowiki' : 'vo',
 	'warwiki' : 'war',
@@ -1219,7 +1231,9 @@ siteLanguageCodes = {
 	'zh_min_nanwiki' : 'nan', # Min Nan Chinese
 	'zh_yuewiki' : 'yue', # Cantonese
 	'zhwiki' : 'zh', # TODO zh is a macrolanguage; should this be cmn?
-	'zuwiki' : 'zu'
+	'zuwiki' : 'zu',
+        'commonswiki' : 'en',   # TODO: Hasardous
+	'tyvwiki' : 'tyv'
 }
 
 # Local cache for property types, to avoid having to fetch any
@@ -1379,5 +1393,5 @@ knownPropertyTypes = {
 	'P81' : 'wikibase-item', 'P84' : 'wikibase-item', 'P85' : 'wikibase-item', 'P86' : 'wikibase-item',
 	'P87' : 'wikibase-item', 'P88' : 'wikibase-item', 'P89' : 'wikibase-item', 'P9' : 'wikibase-item',
 	'P91' : 'wikibase-item', 'P92' : 'wikibase-item', 'P94' : 'commonsMedia', 'P97' : 'wikibase-item',
-	'P98' : 'wikibase-item'
+	'P98' : 'wikibase-item', 'P1006' : 'string', 'P856' : 'url', 'P1005' : 'string'
 }

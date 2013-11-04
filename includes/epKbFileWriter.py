@@ -28,7 +28,7 @@ class EPKbFile(entityprocessor.EntityProcessor):
 
 		if 'links' in data and len(data['links']) > 0 :
 			for lang in data['links'].keys() :
-				self.output.write(title + ' link {' + lang.encode('utf-8') + ':' + data['links'][lang].encode('utf-8') + "} .\n")
+				self.output.write(title + ' link {' + lang.encode('utf-8') + ':' + data['links'][lang]['name'].encode('utf-8') + "} .\n")
 
 		if 'aliases' in data and len(data['aliases']) > 0 :
 			for lang in data['aliases'].keys() :
