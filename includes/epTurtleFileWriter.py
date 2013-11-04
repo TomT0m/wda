@@ -143,9 +143,11 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 				logging.log("*** Warning: the following sitekey was not understood: " + sitekey)
 				continue
 	                
-			articledata = data['links'][sitekey]
+                        #TODO: export badges ?
+                        articledata = data['links'][sitekey]
 	                articletitle = articledata['name'].replace(' ','_').encode('utf-8')
-			self.__startTriples( "<" + URLPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
+			
+                        self.__startTriples( "<" + URLPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
 			self.__addPO( "so:about", "w:" + title )
 			if sitekey in siteLanguageCodes:
 				self.__addPO( "so:inLanguage", "\"" + siteLanguageCodes[sitekey] + "\"")
