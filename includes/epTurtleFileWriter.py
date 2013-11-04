@@ -5,6 +5,7 @@ import logging
 import entityprocessor
 import urllib
 import datetime
+import time
 
 # Entity processor that writes entity data to a file using
 # a compact syntactic format.
@@ -142,12 +143,17 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			else:
 				logging.log("*** Warning: the following sitekey was not understood: " + sitekey)
 				continue
-	                
-                        #TODO: export badges ?
-                        articledata = data['links'][sitekey]
-	                articletitle = articledata['name'].replace(' ','_').encode('utf-8')
 			
-                        self.__startTriples( "<" + URLPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
+			#TODO: export badges ?
+			articledata = data['links'][sitekey]
+			if type(articledata) != str :
+				# badges deployed, it's a dic with "name" and "badge" ley
+				articletitle = articledata['name'].replace(' ','_').encode('utf-8')
+			else:
+				# badges not deployed, it's a string
+				articletitle = articledata.replace(' ','_').encode('utf-8')
+			
+			self.__startTriples( "<" + URLPrefix + urllib.quote(articletitle) + ">", "a", "so:Article" )
 			self.__addPO( "so:about", "w:" + title )
 			if sitekey in siteLanguageCodes:
 				self.__addPO( "so:inLanguage", "\"" + siteLanguageCodes[sitekey] + "\"")
@@ -235,6 +241,20 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 
 	# Fetch current property type.
 	# Get the current type of a property from the Web.
+	def __urlopen(self, url, retry = 10):
+		""" Would be a shame to lose all a work because of a failed connection """
+		try:
+			file = urllib.urlopen(url)
+			return file
+		except Exception:
+			if retry > 0:
+				nretry = 10 - retry
+				logging.log("*** could not urlopen, sleeping {} seconds".format(nretry))
+				time.sleep( nretry * nretry + 1)
+				return self.__urlopen(url, retry -1)
+			else:
+				return []
+		
 	def __fetchPropertyType(self,propertyTitle):
 		# Use local cache if possible (property types never change)
 		if propertyTitle in knownPropertyTypes:
@@ -243,13 +263,13 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 		upTitle = 'P' + propertyTitle[1:]
 		logging.logMore('Fetching current datatype of property ' + propertyTitle + ' from wikidata.org ... ' )
 		self.propertyLookupCount += 1
-		
-	        for line in urllib.urlopen('http://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + upTitle + '&props=datatype&format=json'):
+		file = None
+		for line in self.__urlopen('http://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + upTitle + '&props=datatype&format=json'):
 			data = eval(line)
 			if 'entities' in data and upTitle in data['entities'] and 'datatype' in data['entities'][upTitle]:
-	                        type = data['entities'][upTitle]['datatype']
+				type = data['entities'][upTitle]['datatype']
 				logging.log('found type ' + data['entities'][upTitle]['datatype'])
-	                        print(type)
+				print(type)
 				knownPropertyTypes[propertyTitle] = type # share with all instances of this class
 				return type
 
@@ -303,7 +323,7 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 		else:
 			return '"' + literal + '"@' + langCodes[lang]
 	def __encodeURLLiteral(self, string):
-	        return(self.__encodeStringLiteral(string) + '^^x:simpleURL')
+		return(self.__encodeStringLiteral(string) + '^^x:simpleURL')
 
 	# Encode float literals for use in Turtle.
 	def __encodeFloatLiteral(self,number):
@@ -479,10 +499,10 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 					key = 'VC' + self.__getHashForLocalName(snak[3])
 					self.valuesGC[key] = snak[3]
 					self.__addPO( prop, "w:" + key )
-	                        elif datatype == 'url' :
+				elif datatype == 'url' :
 					self.__addPO( prop, self.__encodeURLLiteral(snak[3]) )
 				else :
-	                            logging.log('*** Warning: Unsupported value snak (datatype: {}) {}:\n'.format(datatype,str(snak)) + '\nExport might be incomplete.\n')
+				    logging.log('*** Warning: Unsupported value snak (datatype: {}) {}:\n'.format(datatype,str(snak)) + '\nExport might be incomplete.\n')
 				    includeSnak = False
 			else:
 				includeSnak = False
@@ -1234,7 +1254,7 @@ siteLanguageCodes = {
 	'zh_yuewiki' : 'yue', # Cantonese
 	'zhwiki' : 'zh', # TODO zh is a macrolanguage; should this be cmn?
 	'zuwiki' : 'zu',
-        'commonswiki' : 'en',   # TODO: Hasardous
+	'commonswiki' : 'en',   # TODO: Hasardous
 	'tyvwiki' : 'tyv'
 }
 
