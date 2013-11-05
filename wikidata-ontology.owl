@@ -31,13 +31,13 @@
 	<owl:Class rdf:about="&wikibase;Item">
 		<rdfs:label>item</rdfs:label>
 		<rdfs:comment>The class of Wikibase items.</rdfs:comment>
-		<rdfs:subClassOf rdf:about="&wikibase;Entity"/>
+		<rdfs:subClassOf rdf:resource="&wikibase;Entity"/>
 	</owl:Class>
 
 	<owl:Class rdf:about="&wikibase;Property">
 		<rdfs:label>item</rdfs:label>
 		<rdfs:comment>The class of Wikibase properties.</rdfs:comment>
-		<rdfs:subClassOf rdf:about="&wikibase;Entity"/>
+		<rdfs:subClassOf rdf:resource="&wikibase;Entity"/>
 		<!-- Note that Wikibase properties in this sense are treated as OWL individuals (punning). Hence this is not a subclass of rdfs:Property! -->
 	</owl:Class>
 

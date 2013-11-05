@@ -6,6 +6,7 @@ import entityprocessor
 import urllib
 import datetime
 import time
+import re
 
 # Entity processor that writes entity data to a file using
 # a compact syntactic format.
@@ -269,7 +270,7 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			if 'entities' in data and upTitle in data['entities'] and 'datatype' in data['entities'][upTitle]:
 				type = data['entities'][upTitle]['datatype']
 				logging.log('found type ' + data['entities'][upTitle]['datatype'])
-				print(type)
+				# print(type)
 				knownPropertyTypes[propertyTitle] = type # share with all instances of this class
 				return type
 
@@ -342,15 +343,18 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 	def __encodeTimeLiteral(self,wikidataTime,precision):
 		# The meaning of precision is:
 		# 11: day, 10: month, 9: year, 8: decade, ..., 0: 10^9 years
+                if len(wikidataTime) != 28:
+                    complement = str( "0" * ( 28 - len(wikidataTime)))
+                    wikidataTime = wikidataTime[0] + complement + wikidataTime[1:]
 
 		try:
 			yearnum = int(wikidataTime[:12])
-			month = wikidataTime[13:15]
-			day = wikidataTime[16:18]
+			monthnum = int(wikidataTime[13:15])
+			daynum = int(wikidataTime[16:18])
 		except ValueError: # some rare values have broken formats
 			logging.log("*** Warning: unexpected date format '" + wikidataTime + "'.")
 			#return '"' + wikidataTime + '"^^x:dateTime' # < not valid in some old dumps
-			return '"2007-05-12T10:30:42Z"^^x:dateTime' # use an arbitrary but valid time; should be very rare (only in old dumps)
+			return '"+OOOOOOO2007-05-12T10:30:42Z"^^x:dateTime' # use an arbitrary but valid time; should be very rare (only in old dumps)
 
 		# Wikidata encodes the year 1BCE as 0000, while XML Schema, even in
 		# version 2, does not allow 0000 and interprets -0001 as 1BCE. Thus
@@ -363,6 +367,8 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 		else: # Python padding counts the "-" sign and reduces 0s by one
 			year = '{0:05d}'.format(yearnum)
 
+                month = '{:2d}'.format(monthnum)
+                day = '{:2d}'.format(daynum)
 		if precision == 11:
 			return '"' + year + '-' + month + '-' + day + '"^^x:date'
 		elif precision == 10:
@@ -465,10 +471,14 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			self.__addPO( "wo:gcPrecision", self.__encodeFloatLiteral(value['precision']) )
 		if value['globe'] != None:
 			try:
-				globeId = str(int(value['globe'][32:]))
+                                globeId = str(int(value['globe'][32:]))
 				self.__addPO( "wo:globe", "w:Q" + globeId )
 			except ValueError:
-				logging.log("*** Warning: illegal globe specification '" + value['globe'] + "'.")
+                                if value['globe'] == 'earth':
+                                    # Workaround
+				    self.__addPO( "wo:globe", "w:Q2")
+                                else:
+				    logging.log("*** Warning: illegal globe specification '" + value['globe'] + "'.")
 		self.__endTriples()
 
 	# Write the data for one snak. Since we use different variants of
@@ -486,6 +496,9 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 
 			if self.dataFilter.includePropertyType(datatype):
 				if datatype == 'wikibase-item':
+                                        if re.match('[a-zA-Z]', str(snak[3]['numeric-id'])):
+                                            print(snak[3])
+                                            exit()
 					self.__addPO( prop, "w:Q" + str(snak[3]['numeric-id']) )
 				elif datatype == 'commonsMedia':
 					self.__addPO( prop, "<http://commons.wikimedia.org/wiki/File:" +  urllib.quote(snak[3].replace(' ','_').encode('utf-8')) + '>' )
@@ -502,7 +515,8 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 				elif datatype == 'url' :
 					self.__addPO( prop, self.__encodeURLLiteral(snak[3]) )
 				else :
-				    logging.log('*** Warning: Unsupported value snak (datatype: {}) {}:\n'.format(datatype,str(snak)) + '\nExport might be incomplete.\n')
+				    logging.log('*** Warning: Unsupported value snak (datatype: {}) {}:\n'
+                                                .format(snak[2], datatype,str(snak)) + '\nExport might be incomplete.\n')
 				    includeSnak = False
 			else:
 				includeSnak = False
