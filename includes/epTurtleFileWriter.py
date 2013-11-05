@@ -146,7 +146,7 @@ class EPTurtleFile(entityprocessor.EntityProcessor):
 			
 			#TODO: export badges ?
 			articledata = data['links'][sitekey]
-			if type(articledata) != str :
+			if type(articledata) == dict :
 				# badges deployed, it's a dic with "name" and "badge" ley
 				articletitle = articledata['name'].replace(' ','_').encode('utf-8')
 			else:
