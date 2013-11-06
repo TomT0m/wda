@@ -1,0 +1,92 @@
+#!/usr/bin/python
+#coding: utf-8
+
+
+import sys
+
+database = sys.argv[1]
+file = sys.argv[2]
+
+import gzip
+import re
+import subprocess
+
+turtle_file = gzip.open(file)
+
+nlines = 0
+endstatement = re.compile("\.$")
+search_point = False
+write_file = False
+to_write = ""
+
+
+### Wikidata OWL/RDF Turtle dump
+### Filter settings (3e3624405bedbff4)
+### - Languages: *
+### - Sites: *
+### - Property types: *
+### - Statements: True
+### - References: True
+### Generated on 2013-11-06 01:35:56.929202
+
+
+headings = """@prefix w: <http://www.wikidata.org/entity/> .
+@prefix wo: <http://www.wikidata.org/ontology#> .
+@prefix r: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix o: <http://www.w3.org/2002/07/owl#> .
+@prefix x: <http://www.w3.org/2001/XMLSchema#> .
+@prefix so: <http://schema.org/> .
+@prefix sk: <http://www.w3.org/2004/02/skos/core#> .
+@prefix pv: <http://www.w3.org/ns/prov#> .
+
+wo:propertyType a       o:ObjectProperty .
+wo:globe        a       o:ObjectProperty .
+wo:latitude     a       o:DatatypeProperty .
+wo:longitude    a       o:DatatypeProperty .
+wo:altitude     a       o:DatatypeProperty .
+wo:gcPrecision  a       o:DatatypeProperty .
+wo:time a       o:DatatypeProperty .
+wo:timePrecision        a       o:DatatypeProperty .
+wo:preferredCalendar    a       o:ObjectProperty .
+pv:wasDerivedFrom       a       o:ObjectProperty .
+so:about        a       o:ObjectProperty .
+so:inLanguage   a       o:DatatypeProperty .
+"""
+
+
+def write_and_import(database, filename, content):
+    with open(filename,'w') as fil:
+        fil.write(headings)
+        fil.write(content)
+
+    return subprocess.call(["4s-import", "-v", "-a", database, filename])
+
+# init
+
+if not subprocess.call(["4s-import", "-v", database, "wikidata-ontology.owl"]) == 0:
+    exit()
+
+for line in turtle_file:
+    nlines = nlines + 1
+    
+    to_write += line
+
+    if nlines % 1000000 == 0:
+        search_point = True
+        print("nlines : {}".format(nlines))
+
+    if search_point:
+        print("<<<<{}>>>>".format(line.rstrip()))
+        if line.rstrip()[-1:] == ".":
+            search_point = False
+            res = write_and_import(database, "/tmp/to_import.ttl", to_write) 
+            if not res == 0:
+                print("Import error !!!!! Line : {}".format(nlines) )
+                exit(1)
+            to_write = ""
+            
+res = write_and_import(database, "/tmp/to_import.ttl", to_write)
+
+print("Wouhouuu {}".format(res))
+
