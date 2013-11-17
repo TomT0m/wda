@@ -55,24 +55,29 @@ so:inLanguage   a       o:DatatypeProperty .
 """
 
 
-def write_and_import(database, filename, content):
-    with open(filename,'w') as fil:
-        fil.write(headings)
-        fil.write(content)
+def open_tmpfile(filename, headings):
+    tmpfile = open(filename, "w")
+    tmpfile.write(headings)
 
-    return subprocess.call(["4s-import", "-v", "-a", database, filename])
+    return tmpfile 
 
 # init
+def foursimport(database, filename):
+    return subprocess.call(["4s-import", "-M", "wikidata_ontology.owl", "-v", "-a", database, filename])
 
 if not subprocess.call(["4s-import", "-v", database, "wikidata-ontology.owl"]) == 0:
     exit()
 
+tmpfile="/tmp/to_import.ttl"
+
+to_write = open_tmpfile("tmpfile", headings)
+
 for line in turtle_file:
     nlines = nlines + 1
     
-    to_write += line
+    to_write.write(line)
 
-    if nlines % 1000000 == 0:
+    if nlines % 50000000 == 0:
         search_point = True
         print("nlines : {}".format(nlines))
 
@@ -80,13 +85,15 @@ for line in turtle_file:
         print("<<<<{}>>>>".format(line.rstrip()))
         if line.rstrip()[-1:] == ".":
             search_point = False
-            res = write_and_import(database, "/tmp/to_import.ttl", to_write) 
+            to_write.close()
+            res = foursimport(database, tmpfile) 
             if not res == 0:
                 print("Import error !!!!! Line : {}".format(nlines) )
                 exit(1)
-            to_write = ""
-            
-res = write_and_import(database, "/tmp/to_import.ttl", to_write)
+            to_write = open_tmpfile("tmpfile", headings)
+
+to_write.close()
+res = foursimport(database, tmpfile)
 
 print("Wouhouuu {}".format(res))
 
