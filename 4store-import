@@ -3,21 +3,13 @@
 
 
 import sys
+import Queue
 
-database = sys.argv[1]
-file = sys.argv[2]
 
 import gzip
 import re
 import subprocess
-
-turtle_file = gzip.open(file)
-
-nlines = 0
-endstatement = re.compile("\.$")
-search_point = False
-write_file = False
-to_write = ""
+import threading
 
 
 ### Wikidata OWL/RDF Turtle dump
@@ -30,7 +22,7 @@ to_write = ""
 ### Generated on 2013-11-06 01:35:56.929202
 
 
-headings = """@prefix w: <http://www.wikidata.org/entity/> .
+HEADINGS = """@prefix w: <http://www.wikidata.org/entity/> .
 @prefix wo: <http://www.wikidata.org/ontology#> .
 @prefix r: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -61,39 +53,126 @@ def open_tmpfile(filename, headings):
 
     return tmpfile 
 
-# init
 def foursimport(database, filename):
     return subprocess.call(["4s-import", "-M", "wikidata_ontology.owl", "-v", "-a", database, filename])
 
-if not subprocess.call(["4s-import", "-v", database, "wikidata-ontology.owl"]) == 0:
-    exit()
+class importThread(threading.Thread):
 
-tmpfile="/tmp/to_import.ttl"
+    def __init__(self, queue, num, database):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.num = num
+        self.numimports = 0
+        self.database = database
 
-to_write = open_tmpfile("tmpfile", headings)
+    def run(self):
 
-for line in turtle_file:
-    nlines = nlines + 1
+        print("Starting import thread ... {}".format(self.num))
+        while True:
+            filename = self.queue.get()
+            self.numimports = self.numimports + 1
+            
+            print("Thread {} : new file (import {} - file {})"
+                  .format(self.num, self.numimports, filename))
+            
+            foursimport(self.database, filename)
+            self.queue.task_done()
+            
+            print("Thread {} : (import {}): done".format(self.num, self.numimports))
+
+def pickfile_genrator(filelist):
+    while True:
+        for file in filelist:
+            yield file
+
+def get_tmpfilename(base, ext, num):
+    return "{}-{}.{}".format(base, num, ext) 
+
+import argparse
+
+
+def arguments():
+    parser = argparse.ArgumentParser(description='Download Wikidata dump files and write data in another format.')
     
-    to_write.write(line)
+    parser.add_argument("--nlines", dest="nlines", type=int, default = 50000000 )
+    parser.add_argument("database", metavar="CLUSTERKB", type=unicode, nargs = 1)
+    parser.add_argument("inputfile", metavar="INPUTFILE", type=unicode, nargs = 1)
+    
+    #database = sys.argv[1]
+    #file = sys.argv[2]
+    
+    return parser
 
-    if nlines % 50000000 == 0:
-        search_point = True
-        print("nlines : {}".format(nlines))
+def main():
+   
+    parser = arguments()
+    args = parser.parse_args()
+    print(args)
+    
+    headings = HEADINGS
 
-    if search_point:
-        print("<<<<{}>>>>".format(line.rstrip()))
-        if line.rstrip()[-1:] == ".":
-            search_point = False
-            to_write.close()
-            res = foursimport(database, tmpfile) 
-            if not res == 0:
-                print("Import error !!!!! Line : {}".format(nlines) )
-                exit(1)
-            to_write = open_tmpfile("tmpfile", headings)
+    mnlines = args.nlines
+    database = args.database[0]
+    file = args.inputfile[0]
+   
+    print(u"{} {} {}".format(mnlines, database, file))
+    tmpfilebase=u"/tmp/to_import"
+    ext = u".ttl"
+    
+    turtle_file = gzip.open(file)
+    if not turtle_file:
+        print("can't open input file")
+        exit()
 
-to_write.close()
-res = foursimport(database, tmpfile)
+    cluster_size = 2
+    if not subprocess.call(["4s-import", "-v", database, "wikidata-ontology.owl"]) == 0:
+        exit()
 
-print("Wouhouuu {}".format(res))
+    queue_size = cluster_size + 2
+    comqueue = Queue.Queue(queue_size)
 
+    # launching threads
+    # for i in range(cluster_size):
+    for i in range(1): #cluster_size):
+        thr = importThread(comqueue, i, database)
+        thr.start()
+
+    tmpfiles = [ get_tmpfilename(tmpfilebase, ext, i) for i in range(queue_size)]
+    
+    search_point = False
+    to_write = ""
+
+    picker = pickfile_genrator(tmpfiles)
+    to_write = open_tmpfile(picker.next(), headings)
+    nlines = 0 
+    
+    for line in turtle_file:
+        nlines = ( nlines + 1 ) % mnlines
+        
+        to_write.write(line)
+        
+        if nlines == 0:
+            search_point = True
+            print("nlines : {}".format(nlines))
+
+        if search_point:
+            # print("<<<<{}>>>>".format(line.rstrip()))
+            if line.rstrip()[-1:] == ".":
+                search_point = False
+                
+                to_write.close()
+                comqueue.put(to_write.name)
+                to_write = open_tmpfile(picker.next(), headings)
+
+    to_write.close()
+    res = comqueue.put(to_write.name)
+    
+    comqueue.join()
+    
+    print("Wouhouuu {}".format(res))
+
+
+
+
+if __name__ == "__main__":
+    main()
